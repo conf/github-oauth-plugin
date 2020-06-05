@@ -246,6 +246,8 @@ public class GithubAuthenticationToken extends AbstractAuthenticationToken {
                         authorities.add(new GrantedAuthorityImpl(orgLogin));
                         for (GHTeam team : teamEntry.getValue()) {
                             authorities.add(new GrantedAuthorityImpl(orgLogin + GithubOAuthGroupDetails.ORG_TEAM_SEPARATOR
+                                    + team.getSlug()));
+                            authorities.add(new GrantedAuthorityImpl(orgLogin + GithubOAuthGroupDetails.ORG_TEAM_SEPARATOR
                                     + team.getName()));
                         }
                     }
