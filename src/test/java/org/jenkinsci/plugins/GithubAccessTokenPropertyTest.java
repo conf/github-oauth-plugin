@@ -106,7 +106,7 @@ public class GithubAccessTokenPropertyTest {
     private static class MockGithubServlet extends DefaultServlet {
         private String currentLogin;
         private List<String> organizations;
-        private List<String> teams;
+        private HashMap<String, String> teams;
 
         private JenkinsRule jenkinsRule;
         private URI serverUri;
@@ -143,7 +143,7 @@ public class GithubAccessTokenPropertyTest {
                     this.onOrgsMember(req, resp, "org-a", "alice");
                     break;
                 case "/teams/7/members/alice":
-                    this.onTeamMember(req, resp, "team-b", "alice");
+                    this.onTeamMember(req, resp, "Team B", "alice");
                     break;
                 case "/orgs/org-c":
                     this.onOrgs(req, resp, "org-c");
@@ -212,12 +212,14 @@ public class GithubAccessTokenPropertyTest {
 
         private void onOrgsTeam(HttpServletRequest req, HttpServletResponse resp, final String orgName) throws IOException {
             List<Map<String, Object>> responseBody = new ArrayList<>();
-            for (String teamName : teams) {
-                final String teamName_ = teamName;
+            for (HashMap.Entry<String, String> team : teams.entrySet()) {
+                final String teamSlug = team.getKey();
+                final String teamName = team.getValue();
                 responseBody.add(new HashMap<String, Object>() {{
                     put("id", 7);
-                    put("login", teamName_ + "_login");
-                    put("name", teamName_);
+                    put("login", teamSlug + "_login");
+                    put("name", teamName);
+                    put("slug", teamSlug);
                     put("organization", new HashMap<String, Object>() {{
                         put("login", orgName);
                     }});
@@ -229,11 +231,13 @@ public class GithubAccessTokenPropertyTest {
 
         private void onUserTeams(HttpServletRequest req, HttpServletResponse resp) throws IOException {
             List<Map<String, Object>> responseBody = new ArrayList<>();
-            for (String teamName : teams) {
-                final String teamName_ = teamName;
+            for (HashMap.Entry<String, String> team : teams.entrySet()) {
+                final String teamSlug = team.getKey();
+                final String teamName = team.getValue();
                 responseBody.add(new HashMap<String, Object>() {{
-                    put("login", teamName_ + "_login");
-                    put("name", teamName_);
+                    put("login", teamSlug + "_login");
+                    put("name", teamName);
+                    put("slug", teamSlug);
                     put("organization", new HashMap<String, Object>() {{
                         put("login", organizations.get(0));
                     }});
@@ -291,10 +295,14 @@ public class GithubAccessTokenPropertyTest {
     @Issue("JENKINS-47113")
     @Test
     public void testUsingGithubToken() throws IOException, SAXException {
+        GithubAuthenticationToken.clearCaches();
+
         String aliceLogin = "alice";
         servlet.currentLogin = aliceLogin;
         servlet.organizations = Arrays.asList("org-a");
-        servlet.teams = Arrays.asList("team-b");
+        servlet.teams = new HashMap<String, String>() {{
+            put("team-b", "Team B");
+        }};
 
         User aliceUser = User.getById(aliceLogin, true);
         String aliceApiRestToken = aliceUser.getProperty(ApiTokenProperty.class).getApiToken();
@@ -304,25 +312,29 @@ public class GithubAccessTokenPropertyTest {
         makeRequestWithAuthCodeAndVerify(encodeBasic(aliceLogin, aliceApiRestToken), "alice", Arrays.asList("authenticated"));
 
         // request whoAmI with GitHubToken => group populated
-        makeRequestWithAuthCodeAndVerify(encodeBasic(aliceLogin, aliceGitHubToken), "alice", Arrays.asList("authenticated", "org-a", "org-a*team-b"));
+        makeRequestWithAuthCodeAndVerify(encodeBasic(aliceLogin, aliceGitHubToken), "alice", Arrays.asList("authenticated", "org-a", "org-a*team-b", "org-a*Team B"));
 
         GithubAuthenticationToken.clearCaches();
 
         // no authentication in session but use the cache
-        makeRequestWithAuthCodeAndVerify(encodeBasic(aliceLogin, aliceApiRestToken), "alice", Arrays.asList("authenticated", "org-a", "org-a*team-b"));
+        makeRequestWithAuthCodeAndVerify(encodeBasic(aliceLogin, aliceApiRestToken), "alice", Arrays.asList("authenticated", "org-a", "org-a*team-b", "org-a*Team B"));
 
         wc = j.createWebClient();
         // no session at all, use the cache also
-        makeRequestWithAuthCodeAndVerify(encodeBasic(aliceLogin, aliceApiRestToken), "alice", Arrays.asList("authenticated", "org-a", "org-a*team-b"));
+        makeRequestWithAuthCodeAndVerify(encodeBasic(aliceLogin, aliceApiRestToken), "alice", Arrays.asList("authenticated", "org-a", "org-a*team-b", "org-a*Team B"));
     }
 
     @Issue("JENKINS-47113")
     @Test
     public void testUsingGithubLogin() throws IOException, SAXException {
+        GithubAuthenticationToken.clearCaches();
+
         String bobLogin = "bob";
         servlet.currentLogin = bobLogin;
         servlet.organizations = Arrays.asList("org-c");
-        servlet.teams = Arrays.asList("team-d");
+        servlet.teams = new HashMap<String, String>() {{
+            put("team-d", "Team D");
+        }};
 
         User bobUser = User.getById(bobLogin, true);
         String bobApiRestToken = bobUser.getProperty(ApiTokenProperty.class).getApiToken();
@@ -330,16 +342,16 @@ public class GithubAccessTokenPropertyTest {
         // request whoAmI with ApiRestToken => group not populated
         makeRequestWithAuthCodeAndVerify(encodeBasic(bobLogin, bobApiRestToken), "bob", Arrays.asList("authenticated"));
         // request whoAmI with GitHub OAuth => group populated
-        makeRequestUsingOAuth("bob", Arrays.asList("authenticated", "org-c", "org-c*team-d"));
+        makeRequestUsingOAuth("bob", Arrays.asList("authenticated", "org-c*Team D", "org-c", "org-c*team-d"));
 
         // use only the session
         // request whoAmI with ApiRestToken => group populated (due to login event)
-        makeRequestWithAuthCodeAndVerify(encodeBasic(bobLogin, bobApiRestToken), "bob", Arrays.asList("authenticated", "org-c", "org-c*team-d"));
+        makeRequestWithAuthCodeAndVerify(encodeBasic(bobLogin, bobApiRestToken), "bob", Arrays.asList("authenticated", "org-c*Team D", "org-c", "org-c*team-d"));
 
         GithubAuthenticationToken.clearCaches();
         wc = j.createWebClient();
         // retrieve the security group even without the cookie (using LastGrantedAuthorities this time)
-        makeRequestWithAuthCodeAndVerify(encodeBasic(bobLogin, bobApiRestToken), "bob", Arrays.asList("authenticated", "org-c", "org-c*team-d"));
+        makeRequestWithAuthCodeAndVerify(encodeBasic(bobLogin, bobApiRestToken), "bob", Arrays.asList("authenticated", "org-c*Team D", "org-c", "org-c*team-d"));
     }
 
     private void makeRequestWithAuthCodeAndVerify(String authCode, String expectedLogin, List<String> expectedAuthorities) throws IOException, SAXException {
@@ -381,8 +393,8 @@ public class GithubAccessTokenPropertyTest {
 
             Set<String> expectedAuthoritiesSet = new HashSet<>(expectedAuthorities);
 
-            // assertTrue(String.format("They do not have the same content, expected=%s, actual=%s", expectedAuthorities, actualAuthorities),
-            //         expectedAuthoritiesSet.equals(actualAuthorities));
+            assertTrue(String.format("They do not have the same content, expected=%s, actual=%s", expectedAuthorities, actualAuthorities),
+                    expectedAuthoritiesSet.equals(actualAuthorities));
         }
     }
 

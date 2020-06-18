@@ -110,7 +110,7 @@ public class GithubAccessTokenPropertySEC797Test {
     private static class MockGithubServlet extends DefaultServlet {
         private String currentLogin;
         private List<String> organizations;
-        private List<String> teams;
+        private HashMap<String, String> teams;
         
         private JenkinsRule jenkinsRule;
         private URI serverUri;
@@ -147,7 +147,7 @@ public class GithubAccessTokenPropertySEC797Test {
                     this.onOrgsMember(req, resp, "org-a", "alice");
                     break;
                 case "/teams/7/members/alice":
-                    this.onTeamMember(req, resp, "team-b", "alice");
+                    this.onTeamMember(req, resp, "Team B", "alice");
                     break;
                 case "/orgs/org-c":
                     this.onOrgs(req, resp, "org-c");
@@ -216,12 +216,14 @@ public class GithubAccessTokenPropertySEC797Test {
         
         private void onOrgsTeam(HttpServletRequest req, HttpServletResponse resp, final String orgName) throws IOException {
             List<Map<String, Object>> responseBody = new ArrayList<>();
-            for (String teamName : teams) {
-                final String teamName_ = teamName;
+            for (HashMap.Entry<String, String> team : teams.entrySet()) {
+                final String teamSlug = team.getKey();
+                final String teamName = team.getValue();
                 responseBody.add(new HashMap<String, Object>() {{
                     put("id", 7);
-                    put("login", teamName_ + "_login");
-                    put("name", teamName_);
+                    put("login", teamSlug + "_login");
+                    put("name", teamName);
+                    put("slug", teamSlug);
                     put("organization", new HashMap<String, Object>() {{
                         put("login", orgName);
                     }});
@@ -233,11 +235,13 @@ public class GithubAccessTokenPropertySEC797Test {
         
         private void onUserTeams(HttpServletRequest req, HttpServletResponse resp) throws IOException {
             List<Map<String, Object>> responseBody = new ArrayList<>();
-            for (String teamName : teams) {
-                final String teamName_ = teamName;
+            for (HashMap.Entry<String, String> team : teams.entrySet()) {
+                final String teamSlug = team.getKey();
+                final String teamName = team.getValue();
                 responseBody.add(new HashMap<String, Object>() {{
-                    put("login", teamName_ + "_login");
-                    put("name", teamName_);
+                    put("login", teamSlug + "_login");
+                    put("name", teamName);
+                    put("slug", teamSlug);
                     put("organization", new HashMap<String, Object>() {{
                         put("login", organizations.get(0));
                     }});
@@ -305,8 +309,10 @@ public class GithubAccessTokenPropertySEC797Test {
         String aliceLogin = "alice";
         servlet.currentLogin = aliceLogin;
         servlet.organizations = Arrays.asList("org-a");
-        servlet.teams = Arrays.asList("team-b");
-        
+        servlet.teams = new HashMap<String, String>() {{
+            put("team-b", "Team B");
+        }};
+
         String sessionIdBefore = checkSessionFixationWithOAuth();
         String sessionIdAfter = rootAction.sessionId;
         assertNotNull(sessionIdAfter);
